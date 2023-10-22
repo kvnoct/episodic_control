@@ -335,17 +335,25 @@ class NECSA_Collector(object):
             obs_next, rew, done, info = result
 
 
+            """Core of the algorithm
+                In each timestep, after stepping on the environment the state (-action) will be abstracted with the Abstracter class
+                After the episode is done, the reward is shaped according to the paper
+            """
+
             observation = self.data.obs[0]
             action = action_remap[0]
             reward = rew[0]
             done_env = done[0]
+
+            #The state abstraction is done here
             self.abstracter.append(list(observation) + list(action), reward, done_env)
+
             if self.abstracter.inspector.mode == 'state':
                 self.state_action_list.append(list(observation))
             elif self.abstracter.inspector.mode == 'state_action':
                 self.state_action_list.append(list(observation) + list(action))
             self.reward_list.append(reward)
-        
+
 
             if done:
                 self.reward_list = self.abstracter.reward_shaping(np.array(self.state_action_list), np.array(self.reward_list))
@@ -353,6 +361,7 @@ class NECSA_Collector(object):
                 self.state_action_list = []
                 self.reward_list = []
                 self.abstracter.inspector.sync_scores()
+            """"""
 
 
             self.data.update(obs_next=obs_next, rew=rew, done=done, info=info)
@@ -380,14 +389,14 @@ class NECSA_Collector(object):
             )
 
             
-
+            """And this, the buffer's reward is changed to the shaped rewards at the end of the episode"""
             if done:
                 if self.collect_step < 950000:
                     self.buffer.rew[ep_idx[0]: ep_idx[0] + ep_len[0]] = self.ep_reward
                 else:
                     pass
                     #print(ep_idx[0], ep_len[0], len(self.ep_reward), self.ep_reward)
-
+            """"""
 
             # collect statistics
             step_count += len(ready_env_ids)

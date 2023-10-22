@@ -129,7 +129,7 @@ class ScoreInspector:
         t.start()
 
     def pattern_abstract(self, con_states, rewards):
-
+        """Part where the abstraction happens"""
         abs_states = self.discretize_states(con_states)
         min_avg_proceed = self.min_avg_proceed
         max_avg_proceed = self.max_avg_proceed
