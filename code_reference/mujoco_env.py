@@ -1,6 +1,6 @@
 import warnings
 
-import gym
+import gymnasium as gym
 
 from tianshou.env import ShmemVectorEnv, VectorEnvNormObs
 
@@ -30,7 +30,7 @@ def make_mujoco_env(task, seed, training_num, test_num, obs_norm):
             [lambda: gym.make(task) for _ in range(training_num)]
         )
         test_envs = ShmemVectorEnv([lambda: gym.make(task) for _ in range(test_num)])
-        env.seed(seed)
+        # env.seed(seed)
         train_envs.seed(seed)
         test_envs.seed(seed)
     if obs_norm:
