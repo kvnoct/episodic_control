@@ -68,6 +68,7 @@ class Graph:
         self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
         self.nodes: Dict[Any, Node] = {}
         self.input_nodes = []  # List of input nodes
+        self.non_input_nodes = []
         self.graph_structure = None
         self.intersection_parameter_dic = intersection_parameter_dic
 
@@ -86,6 +87,8 @@ class Graph:
         if value not in self.nodes:       
             if value.startswith('in'):
                 self.input_nodes.append(value)
+            else:
+                self.non_input_nodes.append(value)
             self.nodes[value] = Node(value, intersection_parameters_dic=self.intersection_parameter_dic)
             
 
@@ -114,6 +117,7 @@ class Graph:
             for neighbor, neighbor_length, dir in connections:
                     self.add_node(neighbor)
                     self.add_edge(node, neighbor, neighbor_length, dir)
+            
 
     def draw_graph(self) -> None:
         """Draw the graph using NetworkX and Matplotlib."""

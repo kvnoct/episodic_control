@@ -114,12 +114,13 @@ class Intersection:
         self.dynamic_action_duration = dynamic_action_duration
         self.action_duration = action_duration
         self.states = [X_state() for _ in range(self.duration)]
-        self.i=0
+        self.i = 0
         self.gamma = gamma
         self.alpha = alpha
         self.epsilon = espilon
         self.n_vehicle_leaving_per_lane = n_vehicle_leaving_per_lane
         self.calculate_reward = reward_function
+        self.departing_metrics = []
        
         # list of vehicles for this intersection
         self.vehicles: Dict[Tuple[str, str], List[Any]] = {}
@@ -199,20 +200,24 @@ class Intersection:
             self.q_table = pd.concat([self.q_table, new_row.to_frame().T])
 
     def move_vehicle(self, next_state, current_action, i):
+        total_depart = 0
         for direction in self.Directions:
             for lane in self.Lanes:
+                tmp = {}
                 depart_count = 0
 
-                safe_right_turn = self.safe_right_turn(direction) if lane == 'R' else False
+                safe_right_turn = self.safe_right_turn(direction) if lane == 'R' else False              
                 for vehicle in self.vehicles[(direction, lane)]:
-
                     # print(vehicle.node_times)
                     departed = vehicle.step(current_time = i, next_state=next_state,
                                              action=current_action, safe_right_turn=safe_right_turn)
                     if departed:
-                        depart_count+=1
+                        depart_count += 1
+                        total_depart += 1
                     if depart_count == self.n_vehicle_leaving_per_lane:
                         break
+
+        self.departing_metrics.append(total_depart)
                 
     def step(self, debug=False):
         next_state = X_state()
@@ -351,7 +356,7 @@ class Intersection:
         nearest_state, action = self.q_table.loc[nearby_states].stack().idxmax()
         action = self.parse_formatted_action(action)
         return nearest_state, action
-
+    
     # ------------------ Utility functions ------------------    
     # used to convert actions to strings
     def format_action(self, action):
@@ -396,8 +401,6 @@ class Intersection:
         output_path = f'plots/combined/Intersection{self.name}.png'
         self.combine_images(image_path, output_path)
       
-
-
 
     def plot_states(self):
         def generate_unique_line_styles(n):
@@ -684,7 +687,7 @@ class Vehicles:
         self.max_speed = max_speed
         self.initialise_vehicle()
         self.num_vehicles = len(self.vehicles)
-    
+
     def get_two_end_nodes(self):
         # get two random nodes from the input nodes, make sure these two are different
         # return as a tuple
@@ -706,19 +709,38 @@ class Vehicles:
     #     for vehicle in self.vehicles:
     #         vehicle.step()
 
-    
-    
-    def get_arrival_times(self):
+    def get_arrival_times(self):        
+        nodes = self.graph.non_input_nodes
         arrival_times = []
+        arrival_times_per_node = {node: [] for node in nodes} 
+
         for vehicle in self.vehicles:
-            arrival_times.append(vehicle.node_times['arrival_time'].values)
-        return arrival_times
+            for node in vehicle.node_times['node'].values.tolist():
+                arrival_times_per_node[node].append(vehicle.node_times['arrival_time'].values)
+                arrival_times.append(vehicle.node_times['arrival_time'].values)
+
+        for node in nodes:
+            arrival_times_per_node[node] = np.concatenate(arrival_times_per_node[node]).ravel()
+
+        arrival_times = np.concatenate(arrival_times).ravel()
+        return arrival_times_per_node, arrival_times
     
     def get_departure_times(self):
+        nodes = self.graph.non_input_nodes
+
         departure_times = []
+        departure_times_per_node = {node: [] for node in nodes} 
+
         for vehicle in self.vehicles:
-            departure_times.append(vehicle.node_times['departure_time'].values)
-        return departure_times
+            for node in vehicle.node_times['node'].values.tolist():
+                departure_times_per_node[node].append(vehicle.node_times['departure_time'].values)
+                departure_times.append(vehicle.node_times['departure_time'].values)
+
+        for node in nodes:
+            departure_times_per_node[node] = np.concatenate(departure_times_per_node[node]).ravel()
+
+        departure_times = np.concatenate(departure_times).ravel()
+        return departure_times_per_node, departure_times
     
     def initialise_vehicle(self):
         self.vehicles = []
@@ -812,8 +834,9 @@ class Env:
         self.vehicle_parameters = vehicle_parameters
         self.intresection_parameters = intersection_parameters
         self.duration = duration       
-
     
+        self.departing_metrics_result = {}
+
     def generate_test_structures(self, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict):
          # generate graph
         self.test_graph_structure = self.generate_graph_structure(**graph_structure_parameters)
@@ -876,6 +899,10 @@ class Env:
                             done = self.step_onestep(intersection=self.graph.nodes[node].intersection)
                             done_dict[node] = done
 
+                        if done_dict[node]:
+                            #if done, gather all departing vehicles count
+                            self.departing_metrics_result[node] = self.graph.nodes[node].intersection.departing_metrics
+
     def done_dict_initialise(self):
         done_dict = {}
         for node in self.graph.nodes:
@@ -883,7 +910,8 @@ class Env:
                 done_dict[node] = False
         return done_dict
     
-    def step_onestep(self, intersection: environment.Intersection)->bool:
+    def step_onestep(self, intersection: environment.Intersection)-> bool:
+        #move_vehicle function call
         next_state, reward, done = intersection.step()
         next_action = intersection.get_next_action(next_state=next_state)
         intersection.update_q_table(reward=reward, state_next=next_state, action_next=next_action, done=done)
@@ -919,12 +947,90 @@ class Env:
                             done = self.step_onestep(intersection=test_graph.nodes[node].intersection)
                             done_dict[node] = done
 
+    def compute_waiting_time(self, departure, arrival):
+        waiting_times = []
+        for i in range(len(departure)):
+            depart = departure[i]
+            arrive = arrival[i]
+            
+            if depart is np.nan or arrive is np.nan:
+                continue
+            else:
+                wait = depart-arrive
+                waiting_times.append(wait)
+        
+        return np.array(waiting_times)
+
+    def get_wait_time(self):
+        departure_times_per_node, departure_times = self.vehicles.get_departure_times()
+        arrival_times_per_node, arrival_times = self.vehicles.get_arrival_times()
+
+        nodes = list(departure_times_per_node.keys())
+        waiting_time_per_node = {}
+
+        for node in nodes:
+            tmp = self.compute_waiting_time(departure_times_per_node[node], arrival_times_per_node[node])
+            waiting_time_per_node[node] = tmp
+
+        waiting_time = self.compute_waiting_time(departure_times, arrival_times)
+            
+        return waiting_time_per_node, waiting_time
+
+    def compute_departing_metrics(self):
+        departing_metrics = self.departing_metrics_result
+        cumsum_metrics = {}
+
+        
+        for node in departing_metrics.keys():
+            cumsum_metrics[node] = np.cumsum(departing_metrics[node])
+
+        agg_metrics = np.zeros(cumsum_metrics[node].shape)
+        for key, values in cumsum_metrics.items():
+            agg_metrics += values      
+        
+        return cumsum_metrics, agg_metrics
+
+    def display_congestion_metric(self):
+        # find W
+        waiting_time_per_node, waiting_time = self.get_wait_time()
+        avg_waiting_time_per_node = {node: np.mean(waiting_time_per_node[node]) for node in waiting_time_per_node.keys()}
+        departing_metrics, agg_departing_metrics = self.compute_departing_metrics()
+
+        if len(waiting_time) == 0:
+            print(f"No cars have pass the intersection yet..")
+        else:
+            print(f"W: total average weight time per lane: {waiting_time.mean().mean()}s")
+            print(f"average weight time per node in s (nan means no cars arrived):\n {avg_waiting_time_per_node}")
+
+        
+        plt.plot(range(len(agg_departing_metrics)), agg_departing_metrics)
+        plt.xlabel("Time (t)")
+        plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
+        plt.title("$V_C(t)$ for all intersections")
+        plt.grid(True)
+        # Show the plot
+        plt.show()
+
+
+        for node in departing_metrics.keys():
+            plt.figure()
+            plt.plot(range(len(departing_metrics[node])), departing_metrics[node])
+            plt.xlabel("Time (t)")
+            plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
+            plt.title(f"$V_C(t)$ for Intersection {node}")
+            plt.grid(True)
+            # Show the plot
+            plt.show()
+
+
+
+
     def plot_env(self):
         self.graph.draw_graph_2()
         for node in self.graph.nodes:
             if not node.startswith('in'):
                 self.graph.nodes[node].intersection.plot_all()
-              
 
 
+   
 
