@@ -15,3 +15,6 @@ code_reference/tianshou/trainer/__pycache__/
 code_reference/tianshou/utils/__pycache__/
 code_reference/tianshou/utils/logger/__pycache__/
 code_reference/tianshou/utils/net/__pycache__/
+
+
+memory_sarsa/__pycache__
