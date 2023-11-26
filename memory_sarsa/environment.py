@@ -1,5 +1,6 @@
 from graph import Graph
 import environment
+import communication
 import memory
 import copy
 from scipy.spatial import KDTree
@@ -10,6 +11,10 @@ import numpy as np
 from typing import List, Dict, Tuple, Any
 from collections import deque
 from PIL import Image
+import utils
+
+random.seed(0)
+np.random.seed(0)
 
 class X_state:
     def __init__(self, Lanes: List[str] = ['F', 'L', 'R'], Directions: List[str] = ['E', 'N', 'W', 'S']) -> None:
@@ -18,7 +23,7 @@ class X_state:
             self.state[direction] = {}
             for lane in Lanes:
                 self.state[direction][lane] = 0
-    
+
     def __eq__(self, other):
         if isinstance(other, X_state):
             return self.state == other.state
@@ -93,6 +98,9 @@ class X_state:
             for lane in self.state[direction]:
                 result += f"{direction}{lane}: {self.state[direction][lane]}\n"
         return result
+    
+    def to_string(self):
+        return self.__str__()
 
 class Intersection:
     def __init__(self, name: str, reward_function, duration: int=200, action_duration: int=10, gamma=0.95, alpha=0.1, espilon=0.1,
@@ -128,7 +136,7 @@ class Intersection:
             for lane in Lanes:
                 self.vehicles[(direction, lane)] = []
         self.actions = A
-        self.action_strings = [self.format_action(action) for action in self.actions]
+        self.action_strings = [utils.format_action(action) for action in self.actions]
         self.q_table = self.get_empty_q_table()
         self.is_mem_based = is_mem_based
         if is_mem_based:
@@ -162,19 +170,19 @@ class Intersection:
         state = self.get_current_state()
         action = self.current_action
 
-        action_string = self.format_action(action)
-        action_next_string = self.format_action(action_next)
+        action_string = utils.format_action(action)
+        action_next_string = utils.format_action(action_next)
 
         if self.i==0:
             self.q_table_check_if_state_exist(state)
         self.q_table_check_if_state_exist(state_next)
 
-        q_value_predict = self.q_table.loc[state, action_string]
+        q_value_predict = self.q_table.loc[state.to_string(), action_string]
         if not done:
-            q_value_real = reward + self.gamma * self.q_table.loc[state_next, action_next_string]
+            q_value_real = reward + self.gamma * self.q_table.loc[state_next.to_string(), action_next_string]
         else:
             q_value_real = reward
-        self.q_table.loc[state, action_string] += self.alpha * (q_value_real - q_value_predict)
+        self.q_table.loc[state.to_string(), action_string] += self.alpha * (q_value_real - q_value_predict)
     
     def safe_right_turn(self, direction):
         right_safety_lane_check = {'E': [('S', 'F'), ('W', 'L')], 
@@ -193,10 +201,10 @@ class Intersection:
         self.states[self.i] = state
 
     def q_table_check_if_state_exist(self, state):
-        if state not in self.q_table.index:
+        if state.to_string() not in self.q_table.index:
             new_row = pd.Series([0] * len(self.actions), 
                                 index=self.q_table.columns, 
-                                name=state)
+                                name=state.to_string())
             self.q_table = pd.concat([self.q_table, new_row.to_frame().T])
 
     def move_vehicle(self, next_state, current_action, i):
@@ -226,7 +234,6 @@ class Intersection:
         ## carry over the previous number of cars at the junction
         current_state = self.get_current_state()
         next_state = copy.deepcopy(current_state)
-
 
         self.move_vehicle(next_state=next_state, current_action=action, i=i)
         
@@ -270,6 +277,7 @@ class Intersection:
                     else:
                         target_action = self.actions[np.random.choice(len(self.actions))]
         elif self.i % self.action_duration==0 and self.i>0:
+            #time to change traffic
             self.q_table_check_if_state_exist(next_state)
             if np.random.rand() < self.epsilon:
                 nearest_state, target_action = self.find_nearest_state_in_q(next_state)
@@ -347,22 +355,18 @@ class Intersection:
     def find_nearest_state_in_q(self, state2, tolerence=1):
         # to do 
         # Calculate distances to all states in the Q-table
-        data = np.vstack(self.q_table.index.map(X_state.to_numpy).values)
+        data = np.vstack(self.q_table.index.map(utils.state_to_numpy).values)
         kd = KDTree(data)
         # Find the index of the closest state
-        indexes = kd.query_ball_point(state2.to_numpy(), r=tolerence)
+        indexes = kd.query_ball_point(utils.state_to_numpy(state2.to_string()), r=tolerence)
         nearby_points = data[indexes]
-        nearby_states = [X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
+        nearby_states = [X_state.numpy_to_x_state(nearby_point).to_string() for nearby_point in nearby_points]
         nearest_state, action = self.q_table.loc[nearby_states].stack().idxmax()
         action = self.parse_formatted_action(action)
         return nearest_state, action
     
     # ------------------ Utility functions ------------------    
-    # used to convert actions to strings
-    def format_action(self, action):
-        formatted_action = f"(({','.join(action[0])}),({','.join(action[1])}))"
-        return formatted_action
-        
+    # used to convert actions to strings        
     
     # convert the formatted action string back to action
     def parse_formatted_action(self, formatted_action):
@@ -673,8 +677,6 @@ class Vehicle:
 
         return departed  
 
-
-
 class Vehicles:
     def __init__(self, graph: Graph, duration,
                   min_speed=20, max_speed=50, lanes = ['F', 'L', 'R'],
@@ -818,9 +820,9 @@ class Vehicles:
         print("No path found.")
         return None
 
-
 class Env:
-    def __init__(self, duration, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict) -> None:
+    def __init__(self, comm_based:bool, duration, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict,
+                 communication_parameters: Dict) -> None:
         self.directions = ['N', 'E', 'S', 'W']
         self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
 
@@ -833,7 +835,10 @@ class Env:
         self.vehicles = Vehicles(graph = self.graph, **vehicle_parameters)
         self.vehicle_parameters = vehicle_parameters
         self.intresection_parameters = intersection_parameters
-        self.duration = duration       
+        self.communication_parameters = communication_parameters
+        self.comm = communication.Communication(**communication_parameters)
+        self.duration = duration    
+        self.comm_based = comm_based   
     
         self.departing_metrics_result = {}
 
@@ -885,12 +890,27 @@ class Env:
         
         return graph_structure
     
-    def SARSA_run(self, n_episodes):
+    def update_memories(self) -> None:
+        memories = []
+        for node in self.graph.nodes:
+            if not node.startswith('in'):
+                table=self.graph.nodes[node].intersection.q_table
+                memories.append(table)
+
+        self.comm.update_central_memory(memories)
+        
+        #Update local memories
+        for node in self.graph.nodes:
+            if not node.startswith('in'):
+                self.graph.nodes[node].intersection.q_table = self.comm.update_local_memory(self.graph.nodes[node].intersection.q_table)
+
+    def SARSA_run(self, n_episodes, update_epoch):
         for _ in range(n_episodes):
             # reset the environment
             self.graph.reset()
             self.vehicles = Vehicles(graph=self.graph, **self.vehicle_parameters)
 
+            n_iter = 1
             done_dict = self.done_dict_initialise()
             while not all(done_dict.values()):
                 for node in self.graph.nodes:
@@ -902,6 +922,12 @@ class Env:
                         if done_dict[node]:
                             #if done, gather all departing vehicles count
                             self.departing_metrics_result[node] = self.graph.nodes[node].intersection.departing_metrics
+                
+                if n_iter % update_epoch == 0 and self.comm_based == True:
+                    #time to update memory tables
+                    self.update_memories()
+                
+                n_iter += 1
 
     def done_dict_initialise(self):
         done_dict = {}

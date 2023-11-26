@@ -1,6 +1,35 @@
 from typing import Dict, Any, Tuple, List
 import random
 import numpy as np
+random.seed(0)
+np.random.seed(0)
+
+def format_action(action):
+    formatted_action = f"(({','.join(action[0])}),({','.join(action[1])}))"
+    return formatted_action
+
+"""These 3 functions are the workaround of the stringified X_state implementation"""
+def string_to_state_dict(state: str) -> Dict:
+    st_dict = {}
+    for string in state.split('\n'):
+        items = string.split(':')
+        
+        if len(items) > 1:
+            st_dict[items[0]] = int(items[1])
+    
+    return st_dict
+
+def get_values_tuple(state: str):
+    state = string_to_state_dict(state)
+    # Use a nested list comprehension to extract values from inner dictionaries
+    values_list = [value for value in state.values()]
+    # Convert the list of values into a tuple
+    values_tuple = tuple(values_list)
+    return values_tuple
+
+def state_to_numpy(state: str):
+    return np.array(get_values_tuple(state))
+
 
 # the default reward function
 def calculate_reward_default(current_state, next_state, action, debug=False):

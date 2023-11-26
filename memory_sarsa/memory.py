@@ -2,8 +2,15 @@ import pandas as pd
 import numpy as np
 import environment
 from scipy.spatial import KDTree
+import random
+random.seed(0)
+np.random.seed(0)
 
 class Memory():
+    """
+        Long term memory contain the best actions
+        Short term memory acts like the usual Q table, containing the Q-value of each (s, a) pair
+    """
     def __init__(self, q_table, gamma, alpha, duration) -> None:
          # columns: "distance metric-sum of elemnts ^2, optimal action, optimal R_a"
          self.columns =['d', 'a', 'R']
@@ -177,3 +184,4 @@ class Memory():
     def format_action(self, action):
             formatted_action = f"(({','.join(action[0])}),({','.join(action[1])}))"
             return formatted_action
+    
