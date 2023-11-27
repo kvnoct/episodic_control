@@ -1,8 +1,10 @@
 from typing import Dict, Any, Tuple, List
 import random
 import numpy as np
-random.seed(0)
-np.random.seed(0)
+
+def seed_all(seed = 0):
+    random.seed(seed)
+    np.random.seed(seed)
 
 def format_action(action):
     formatted_action = f"(({','.join(action[0])}),({','.join(action[1])}))"

@@ -1,10 +1,7 @@
 import pandas as pd
 import numpy as np
 import utils
-import random
 from typing import List, Callable
-random.seed(0)
-np.random.seed(0)
 
 class Communication:
     def __init__(self, A, mu: float = 0.0, sigma:float = 1.0, tau: float = 0.0,

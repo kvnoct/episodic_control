@@ -2,9 +2,6 @@ import pandas as pd
 import numpy as np
 import environment
 from scipy.spatial import KDTree
-import random
-random.seed(0)
-np.random.seed(0)
 
 class Memory():
     """

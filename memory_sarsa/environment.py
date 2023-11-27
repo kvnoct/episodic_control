@@ -13,9 +13,6 @@ from collections import deque
 from PIL import Image
 import utils
 
-random.seed(0)
-np.random.seed(0)
-
 class X_state:
     def __init__(self, Lanes: List[str] = ['F', 'L', 'R'], Directions: List[str] = ['E', 'N', 'W', 'S']) -> None:
         self.state = {}
@@ -103,7 +100,7 @@ class X_state:
         return self.__str__()
 
 class Intersection:
-    def __init__(self, name: str, reward_function, duration: int=200, action_duration: int=10, gamma=0.95, alpha=0.1, espilon=0.1,
+    def __init__(self, name: str, reward_function, verbose, duration: int=200, action_duration: int=10, gamma=0.95, alpha=0.1, espilon=0.1,
                  Lanes: List[str] = ['F', 'L', 'R'], is_mem_based: bool = False, 
                  is_dynamic_action_duration: bool = False, dynamic_action_duration: int = 4,
                  Directions: List[str] = ['E', 'N', 'W', 'S'], 
@@ -111,9 +108,10 @@ class Intersection:
                         (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
                         (['E'], ['F', 'L']), (['W'], ['F', 'L']), 
                         (['N'], ['F', 'L']), (['S'], ['F', 'L'])],
-                n_vehicle_leaving_per_lane=1) -> None:
+                n_vehicle_leaving_per_lane=1,) -> None:
         
         # to do implement dynamic action duration
+        self.verbose = verbose
         self.name = name
         self.Lanes = Lanes
         self.Directions = Directions
@@ -555,10 +553,11 @@ class Intersection:
         combined_image.save(output_path)
         print(f"Images combined and saved as '{output_path}'")
         # Display the combined image
-        plt.imshow(combined_image)
-        plt.axis('off')  # Hide axis
-        plt.title(f'Intersection {self.name}')
-        plt.show()
+        if self.verbose == True:
+            plt.imshow(combined_image)
+            plt.axis('off')  # Hide axis
+            plt.title(f'Intersection {self.name}')
+            plt.show()
 
    
     def __str__(self) -> str:
@@ -822,7 +821,7 @@ class Vehicles:
 
 class Env:
     def __init__(self, comm_based:bool, duration, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict,
-                 communication_parameters: Dict) -> None:
+                 communication_parameters: Dict, verbose: bool) -> None:
         self.directions = ['N', 'E', 'S', 'W']
         self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
 
@@ -830,7 +829,10 @@ class Env:
         self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         self.graph = Graph(intersection_parameter_dic=intersection_parameters)
         self.graph.add_from_dict(graph_structure=self.graph_structure)
-        self.graph.draw_graph_2()
+
+        self.verbose = verbose
+        if self.verbose == True:
+            self.graph.draw_graph_2()
 
         self.vehicles = Vehicles(graph = self.graph, **vehicle_parameters)
         self.vehicle_parameters = vehicle_parameters
@@ -839,7 +841,8 @@ class Env:
         self.comm = communication.Communication(**communication_parameters)
         self.duration = duration    
         self.comm_based = comm_based   
-    
+        
+
         self.departing_metrics_result = {}
 
     def generate_test_structures(self, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict):
@@ -847,7 +850,8 @@ class Env:
         self.test_graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         self.test_graph = Graph(intersection_parameter_dic=intersection_parameters)
         self.test_graph.add_from_dict(graph_structure=self.graph_structure)
-        self.test_graph.draw_graph_2()
+        if self.verbose == True:
+            self.test_graph.draw_graph_2()
 
         self.test_vehicles = Vehicles(graph=self.graph, **vehicle_parameters)
         return self.test_graph, self.test_vehicles
@@ -1028,27 +1032,26 @@ class Env:
             print(f"W: total average weight time per lane: {waiting_time.mean().mean()}s")
             print(f"average weight time per node in s (nan means no cars arrived):\n {avg_waiting_time_per_node}")
 
-        
-        plt.plot(range(len(agg_departing_metrics)), agg_departing_metrics)
-        plt.xlabel("Time (t)")
-        plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
-        plt.title("$V_C(t)$ for all intersections")
-        plt.grid(True)
-        # Show the plot
-        plt.show()
-
-
-        for node in departing_metrics.keys():
-            plt.figure()
-            plt.plot(range(len(departing_metrics[node])), departing_metrics[node])
+        if self.verbose == True:
+            plt.plot(range(len(agg_departing_metrics)), agg_departing_metrics)
             plt.xlabel("Time (t)")
             plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
-            plt.title(f"$V_C(t)$ for Intersection {node}")
+            plt.title("$V_C(t)$ for all intersections")
             plt.grid(True)
             # Show the plot
-            plt.show()
 
 
+            for node in departing_metrics.keys():
+                plt.figure()
+                plt.plot(range(len(departing_metrics[node])), departing_metrics[node])
+                plt.xlabel("Time (t)")
+                plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
+                plt.title(f"$V_C(t)$ for Intersection {node}")
+                plt.grid(True)
+                # Show the plot
+                plt.show()
+
+        return waiting_time.mean().mean()
 
 
     def plot_env(self):
