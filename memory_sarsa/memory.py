@@ -2,12 +2,10 @@ import pandas as pd
 import numpy as np
 import environment
 from scipy.spatial import KDTree
+import matplotlib.pyplot as plt
+
 
 class Memory():
-    """
-        Long term memory contain the best actions
-        Short term memory acts like the usual Q table, containing the Q-value of each (s, a) pair
-    """
     def __init__(self, q_table, gamma, alpha, duration) -> None:
          # columns: "distance metric-sum of elemnts ^2, optimal action, optimal R_a"
          self.columns =['d', 'a', 'R']
@@ -16,9 +14,10 @@ class Memory():
          self.size_time = np.zeros(duration)
          self.size_time[0] = self.memory_table.shape[0]
          self.short_term_Q = pd.DataFrame(columns=q_table.columns, dtype=np.float64)
-         self.short_term_memory_size = 20
+         self.short_term_memory_size = 10
          self.gamma = gamma
          self.alpha = alpha
+         self.duration=duration
     
     def update_size_time_array(self,i):
         self.size_time[i] = self.memory_table.shape[0]
@@ -48,7 +47,7 @@ class Memory():
         # short term memory is full, time to append it to long term memory table
         if self.short_term_Q.shape[0]==self.short_term_memory_size:
             # find the size//2 most frequent states in short term memory, i.e. ones with biggest rewards
-            q = self.short_term_Q.nlargest(self.short_term_memory_size, self.short_term_Q.columns)
+            q = self.short_term_Q.nlargest(self.short_term_memory_size//2, self.short_term_Q.columns)
             self.append_using_q_table(q)
             #empty the short term memory buffer
             self.short_term_Q = pd.DataFrame(columns=self.short_term_Q.columns, dtype=np.float64)
@@ -113,7 +112,8 @@ class Memory():
                 
         else:
             # the state is not in memeory, find a nearby state and use it 
-            data = np.vstack(memory.index.map(environment.X_state.to_numpy).values)
+            
+            data = np.vstack(memory.index.map(X_state.to_numpy).values)
             kd = KDTree(data)
             indexes = kd.query_ball_point(state.to_numpy(), r=tolerence)
             in_memory = True
@@ -123,7 +123,7 @@ class Memory():
                 in_memory = False
                 return None, None, in_memory
             nearby_points = data[indexes]
-            nearby_states = [environment.X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
+            nearby_states = [X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
             if memory_type =='long':
                 nearby_table =  self.memory_table.loc[nearby_states]
                 nearby_state = nearby_table.index[nearby_table['R'].to_numpy().argmax()]
@@ -133,6 +133,62 @@ class Memory():
                 action = self.parse_formatted_action(action)
 
         return nearby_state, action, in_memory
+
+    def plot_memory_tables(self, directory_path, name):
+        # plot short term memory as heat map and display long term memory as a table
+        fig, ax = plt.subplots(1,2, figsize=(20,10))
+        ax[1].set_title('Short Term Memory')
+        ax[0].set_title('Long Term Memory')
+        im = ax[1].imshow(self.short_term_Q, cmap='viridis')
+        ax[1].set_xlabel('Actions')
+        ax[1].set_ylabel('States')
+        ax[1].set_xticks(range(len(self.short_term_Q.columns)))
+        ax[1].set_yticks(range(len(self.short_term_Q.index)))
+        ax[1].set_xticklabels(self.short_term_Q.columns, rotation=90)
+        ax[1].set_yticklabels(self.short_term_Q.index, rotation=0)
+             # Create a colorbar
+        cbar = ax[1].figure.colorbar(im, ax=ax[1])
+        cbar.set_label('Q-value')  # Set the label for the colorbar
+        
+        # long term memory, display as a heatmap ingore distance metric, set columns to self.shortermQ.columns
+        # as long term memory only has actions and rewards, set all other missing actions to 0
+        # create a new df with columns as short term memory and index as long term memor
+        # create an empty df as long term memory, fill all values to 0
+        long_term_memory = pd.DataFrame(0, index=self.memory_table.index, columns=self.short_term_Q.columns)
+
+        # update the long term memory with the values from long term memory table for an action 
+        for state in self.memory_table.index:
+            action = self.memory_table.loc[state]['a']
+            action = self.format_action(action)
+            reward = self.memory_table.loc[state]['R']
+            long_term_memory.loc[state, action] = reward
+        
+        # plot the long term memory as a heat map
+        im = ax[0].imshow(long_term_memory, cmap='viridis')
+        ax[0].set_xlabel('Actions')
+        ax[0].set_ylabel('States')
+        ax[0].set_xticks(range(len(long_term_memory.columns)))
+        ax[0].set_yticks(range(len(long_term_memory.index)))
+        ax[0].set_xticklabels(long_term_memory.columns, rotation=90)
+        ax[0].set_yticklabels(long_term_memory.index, rotation=0)
+        # Create a colorbar
+        cbar = ax[0].figure.colorbar(im, ax=ax[0])
+        cbar.set_label('Reward')  # Set the label for the colorbar
+
+        plt.tight_layout()
+        fig.subplots_adjust(wspace=2)
+
+         # Save the plot in a directory
+        directory_path = directory_path + 'individual/'
+        file_name = f'Memorytable{name}.png'  
+        # Combine the directory path and file name
+        file_path = directory_path + file_name
+        # Save the plot
+        plt.savefig(file_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+        return file_path
+        
+
 
 
     # return the action when its in memory or close to state otherwise 
@@ -181,4 +237,3 @@ class Memory():
     def format_action(self, action):
             formatted_action = f"(({','.join(action[0])}),({','.join(action[1])}))"
             return formatted_action
-    
