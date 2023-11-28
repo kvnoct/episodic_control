@@ -30,6 +30,7 @@ def get_values_tuple(state: str):
     return values_tuple
 
 def state_to_numpy(state: str):
+    # use state to numpy function in x_state.py instead
     return np.array(get_values_tuple(state))
 
 
