@@ -132,11 +132,16 @@ class Intersection:
         self.actions = A
         self.action_strings = [self.format_action(action) for action in self.actions]
         self.q_table = self.get_empty_q_table()
+        self.q_table_size_time = np.zeros(duration)
+        self.q_table_size_time[0] = self.q_table.shape[0]
         self.is_mem_based = is_mem_based
         if is_mem_based:
             self.mem = Memory(q_table=self.q_table, gamma=gamma, alpha=alpha, duration=duration)
 
         self.current_action = self.get_next_action(next_state=self.get_current_state(), first=True)
+
+    def update_q_table_size_time_array(self,i):
+        self.q_table_size_time[i] = self.q_table.shape[0]
 
     def set_memory_based(self, is_mem_based):
         self.is_mem_based = is_mem_based
@@ -415,6 +420,7 @@ class Intersection:
 
         else:
             image_path.append(self.plot_q_table(directory_path=directory_path))
+            image_path.append(self.plot_q_table_size_time(directory_path=directory_path))
         image_path.append(self.plot_states(directory_path=directory_path))     
         image_path.append(self.plot_traffic(directory_path=directory_path))
 
@@ -492,6 +498,24 @@ class Intersection:
         # Save the plot in a directory
         directory_path = directory_path + 'individual/'
         file_name = f'Qtable{self.name}.png'  
+        # Combine the directory path and file name
+        file_path = directory_path + file_name
+        # Save the plot
+        plt.savefig(file_path, bbox_inches='tight', pad_inches=0)
+        plt.close(fig)
+        return file_path
+    
+    def plot_q_table_size_time(self, directory_path):
+        fig, ax = plt.subplots(figsize=(12, 8))
+        ax.plot(range(self.q_table_size_time.shape[0]), self.q_table_size_time)
+        ax.set_xlabel('Time (t)')
+        ax.set_ylabel('Q-table Size')
+        ax.set_title(f"Q-table size for {self.name}")
+        # plt.show()
+
+        # Save the plot in a directory
+        directory_path = directory_path + 'individual/'
+        file_name = f'QtableSize{self.name}.png'  
         # Combine the directory path and file name
         file_path = directory_path + file_name
         # Save the plot
@@ -856,7 +880,7 @@ class Env:
         self.test_graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         self.test_graph = Graph(intersection_parameter_dic=intersection_parameters)
         self.test_graph.add_from_dict(graph_structure=self.test_graph_structure)
-        self.test_graph.draw_graph_2()
+        self.test_graph = self.copy_q_table(from_graph=self.graph, to_graph=self.test_graph)
 
         self.test_vehicles = Vehicles(graph=self.test_graph, **vehicle_parameters)
         return self.test_graph, self.test_vehicles
@@ -931,29 +955,31 @@ class Env:
     def step_onestep_test(self, intersection: Intersection)->bool:
         next_state, reward, done = intersection.step()
         next_action = intersection.greedy(next_state=next_state)
+        if not intersection.is_mem_based:
+            intersection.update_q_table(reward=reward, state_next=next_state, action_next=next_action, done=done)
+        else:
+            intersection.mem.insert(current_state=intersection.get_current_state(), current_action=intersection.current_action, 
+                                    reward=reward, state_next=next_state, action_next=next_action, done=done)
         if not done:
-            if intersection.is_mem_based:
-                intersection.mem.insert(current_state=intersection.get_current_state(), current_action=intersection.current_action, 
-                                        reward=reward, state_next=next_state, action_next=next_action, done=done)
             intersection.apply_state(state=next_state, action=next_action)
-        if intersection.is_mem_based:
+        if not intersection.is_mem_based:
+            intersection.update_q_table_size_time_array(i=intersection.i)
+        else:
             intersection.mem.update_size_time_array(i=intersection.i)
+
         return done
     
-
-    def copy_q_table(self, test_graph):
-        graph = copy.deepcopy(test_graph)
-        for node in graph.nodes:
+    def copy_q_table(self, from_graph, to_graph):
+        for node in from_graph.nodes:
             if not node.startswith('in'):
-                graph.nodes[node].intersection.q_table = copy.deepcopy(self.graph.nodes[node].intersection.q_table)
-                graph.nodes[node].intersection.reset()
-        
-        return graph
+                to_graph.nodes[node].intersection.q_table = copy.deepcopy(from_graph.nodes[node].intersection.q_table)
+                to_graph.nodes[node].intersection.reset()
+        return to_graph
 
     def test(self, test_graph, test_vehicles):
         # TODO calculate average metrics and run it for multiple tests
-        
-        graph = self.copy_q_table(test_graph)
+        graph = copy.deepcopy(test_graph)
+        graph = self.copy_q_table(from_graph=test_graph, to_graph=graph)
         vehicles = test_vehicles.copy(new_graph=graph)
 
         self.graph = graph
@@ -973,6 +999,7 @@ class Env:
         for node in self.graph.nodes:
             if not node.startswith('in'):
                 self.graph.nodes[node].intersection.plot_all()
+              
       
-   
+
 
