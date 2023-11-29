@@ -191,13 +191,15 @@ class Intersection:
             q_value_real = reward
         self.q_table.loc[state, action_string] += self.alpha * (q_value_real - q_value_predict)
     
-    def safe_right_turn(self, direction):
+    def safe_right_turn(self, direction, action):
         right_safety_lane_check = {'E': [('S', 'F'), ('W', 'L')], 
                                    'W': [('N', 'F'), ('E', 'L')], 
                                    'N': [('E', 'F'), ('S', 'L')], 
                                    'S': [('W', 'F'), ('N', 'L')]}
         for d, l in right_safety_lane_check[direction]:
-            if self.get_current_state().state[d][l] > 0:
+            # if the vehicles are allowed to move to the lane where right turn will lead to 
+            # and there are more than 0 vehicles coming from that direction and lane
+            if d in action[0] and l in action[1] and self.get_current_state().state[d][l] > 0:
                 return False
         return True
 
@@ -220,7 +222,7 @@ class Intersection:
             for lane in self.Lanes:
                 depart_count = 0
 
-                safe_right_turn = self.safe_right_turn(direction) if lane == 'R' else False
+                safe_right_turn = self.safe_right_turn(direction, current_action) if lane == 'R' else False
                 for vehicle in self.vehicles[(direction, lane)]:
 
                     # print(vehicle.node_times)
