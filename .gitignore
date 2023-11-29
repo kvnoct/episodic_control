@@ -18,3 +18,6 @@ code_reference/tianshou/utils/net/__pycache__/
 
 
 memory_sarsa/__pycache__
+memory_sarsa/test.ipynb
+memory_sarsa/communication_layer.ipynb
+memory_sarsa/*npy

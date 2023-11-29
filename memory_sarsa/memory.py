@@ -45,7 +45,7 @@ class Memory():
 
     def insert(self,current_state, current_action, reward, state_next, action_next, done):
         # short term memory is full, time to append it to long term memory table
-        if self.short_term_Q.shape[0]==self.short_term_memory_size:
+        if self.short_term_Q.shape[0] >= self.short_term_memory_size:
             # find the size//2 most frequent states in short term memory, i.e. ones with biggest rewards
             q = self.short_term_Q.nlargest(self.short_term_memory_size//2, self.short_term_Q.columns)
             self.append_using_q_table(q)
@@ -113,7 +113,7 @@ class Memory():
         else:
             # the state is not in memeory, find a nearby state and use it 
             
-            data = np.vstack(memory.index.map(X_state.to_numpy).values)
+            data = np.vstack(memory.index.map(environment.X_state.to_numpy).values)
             kd = KDTree(data)
             indexes = kd.query_ball_point(state.to_numpy(), r=tolerence)
             in_memory = True
@@ -123,7 +123,7 @@ class Memory():
                 in_memory = False
                 return None, None, in_memory
             nearby_points = data[indexes]
-            nearby_states = [X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
+            nearby_states = [environment.X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
             if memory_type =='long':
                 nearby_table =  self.memory_table.loc[nearby_states]
                 nearby_state = nearby_table.index[nearby_table['R'].to_numpy().argmax()]

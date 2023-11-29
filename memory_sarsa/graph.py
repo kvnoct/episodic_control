@@ -32,7 +32,7 @@ class Node:
         self.value: Any = value
         self.neighbors: Dict[Any, str] = {}  # Dict to hold neighboring nodes based on direction
         self.edges: Dict[str, Edge] = {}  # Dict to hold edges based on direction
-        self.intersection = Intersection(name=value, **intersection_parameters_dic)
+        self.intersection = environment.Intersection(name=value, **intersection_parameters_dic)
 
 
     def add_neighbor(self, direction: str, node: Any, edge: Edge) -> None:
@@ -68,6 +68,7 @@ class Graph:
         self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
         self.nodes: Dict[Any, Node] = {}
         self.input_nodes = []  # List of input nodes
+        self.non_input_nodes = []
         self.graph_structure = None
         self.intersection_parameter_dic = intersection_parameter_dic
 
@@ -91,6 +92,8 @@ class Graph:
         if value not in self.nodes:       
             if value.startswith('in'):
                 self.input_nodes.append(value)
+            else:
+                self.non_input_nodes.append(value)
             self.nodes[value] = Node(value, intersection_parameters_dic=self.intersection_parameter_dic)
             
 
@@ -226,7 +229,7 @@ class Graph:
         labels = {str(node.value): str(node.value) for node in self.nodes.values()}
         edge_labels = {(u, v): str(data['length']) for u, v, data in G.edges(data=True)}
 
-        nx.draw(G, pos, with_labels=True, labels=labels, node_size=800, node_color='skyblue', font_weight='bold', arrows=True)
+        nx.draw_networkx(G, pos, with_labels=True, labels=labels, node_size=800, node_color='skyblue', font_weight='bold', arrows=True)
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
         plt.title("Graph Visualization - Rectangular Grid Layout")
         plt.show()
