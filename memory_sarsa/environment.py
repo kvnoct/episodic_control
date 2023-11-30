@@ -229,7 +229,7 @@ class Intersection:
                     departed = vehicle.step(current_time = i, next_state=next_state,
                                              action=current_action, safe_right_turn=safe_right_turn)
                     if departed:
-                        depart_count+=1
+                        depart_count += 1
                         total_depart += 1
                     if depart_count == self.n_vehicle_leaving_per_lane:
                         break
@@ -895,7 +895,7 @@ class Env:
         self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         self.graph = Graph(intersection_parameter_dic=intersection_parameters)
         self.graph.add_from_dict(graph_structure=self.graph_structure)
-        self.graph.draw_graph_2()
+        # self.graph.draw_graph_2()
 
         self.vehicles = Vehicles(graph=self.graph, **vehicle_parameters)
         self.vehicle_parameters = vehicle_parameters
@@ -906,9 +906,10 @@ class Env:
         self.update_type = update_type
 
         self.departing_metrics_result = {}
+        self.arriving_vehicles = []
     
     def generate_test_structures(self, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict):
-         # generate graph
+        # generate graph
         self.test_graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         self.test_graph = Graph(intersection_parameter_dic=intersection_parameters)
         self.test_graph.add_from_dict(graph_structure=self.test_graph_structure)
@@ -1002,6 +1003,7 @@ class Env:
     def step_onestep_test(self, intersection: Intersection)->bool:
         next_state, reward, done = intersection.step(test = True)
         next_action = intersection.greedy(next_state=next_state)
+
         if not intersection.is_mem_based:
             intersection.update_q_table(reward=reward, state_next=next_state, action_next=next_action, done=done)
         else:
@@ -1009,10 +1011,11 @@ class Env:
                                     reward=reward, state_next=next_state, action_next=next_action, done=done)
         if not done:
             intersection.apply_state(state=next_state, action=next_action)
+        
         if not intersection.is_mem_based:
             intersection.update_q_table_size_time_array(i=intersection.i)
         else:
-            intersection.mem.update_size_time_array(i=intersection.i)
+            intersection.mem.update_size_time_array(i=intersection.i)      
 
         return done
     
@@ -1049,6 +1052,7 @@ class Env:
                     self.update_memories()
                             
                 n_iter += 1
+            self.arriving_vehicles.append(self.compute_arriving_vehicles())
 
     def plot_env(self):
         self.graph.draw_graph_2()
@@ -1100,15 +1104,23 @@ class Env:
         return cumsum_metrics, agg_metrics
 
     def get_congestion_metric(self):
-        # find W
+        # find W, Vc, and Intersection clearance
         waiting_time_per_node, waiting_time = self.get_wait_time()
         avg_waiting_time_per_node = {node: np.mean(waiting_time_per_node[node]) for node in waiting_time_per_node.keys()}
         departing_metrics, agg_departing_metrics = self.compute_departing_metrics()
 
-        return waiting_time.mean().mean(), avg_waiting_time_per_node, departing_metrics, agg_departing_metrics,
+        return waiting_time.mean().mean(), avg_waiting_time_per_node, departing_metrics, agg_departing_metrics, self.arriving_vehicles
     
+    def compute_arriving_vehicles(self):
+        arrive = 0
+        for vehicle in self.vehicles.vehicles:
+            if vehicle.reached_destination == True:
+                arrive += 1
+
+        return arrive
+
     def display_congestion_metric(self):
-        waiting_time_mean, waiting_time_node, departing_metrics, agg_departing_metrics = self.get_congestion_metric()
+        waiting_time_mean, waiting_time_node, departing_metrics, agg_departing_metrics, arriving_vehicles = self.get_congestion_metric()
 
         if waiting_time_mean == 0:
             print(f"No cars have pass the intersection yet..")
@@ -1116,12 +1128,35 @@ class Env:
             print(f"W: total average weight time per lane: {waiting_time_mean}s")
             print(f"average weight time per node in s (nan means no cars arrived):\n {waiting_time_node}")
 
+        print(f"Total arriving cars: {arriving_vehicles[-1]}")
         
+        # if self.is_mem_based:
+        #     mem_string = "memory_based"
+        # else:
+        #     mem_string = "not_memory_based"
+
+        # if self.comm_based:
+        #     comm_string = "comm_based"
+        # else:
+        #     comm_string = "not_comm_based"
+
+        # file_path = f"'plots/{mem_string}/{comm_string}'"
+        plt.plot(range(len(arriving_vehicles)), arriving_vehicles)
+        plt.xlabel("Time (t)")
+        plt.ylabel('Number of Cars')
+        plt.title("Cars Reaching Destination ($V_C(t)$")
+        plt.grid(True)
+        # plt.savefig(file_path + "Vc", bbox_inches='tight', pad_inches=0)
+        # plt.close()
+
+        plt.figure()
         plt.plot(range(len(agg_departing_metrics)), agg_departing_metrics)
         plt.xlabel("Time (t)")
-        plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
-        plt.title("$V_C(t)$ for all intersections")
+        plt.ylabel('Number of Cars')
+        plt.title("Total Car Clearance in All Intersections")
         plt.grid(True)
+        # plt.savefig(file_path + "car_clearance", bbox_inches='tight', pad_inches=0)
+        # plt.close()
         # Show the plot
 
 
@@ -1129,11 +1164,13 @@ class Env:
             plt.figure()
             plt.plot(range(len(departing_metrics[node])), departing_metrics[node])
             plt.xlabel("Time (t)")
-            plt.ylabel('Destination reached by total #cars ($V_C(t)$)')
-            plt.title(f"$V_C(t)$ for Intersection {node}")
+            plt.ylabel('Number of Cars')
+            plt.title(f"Total Car Clearance in Intersection {node}")
             plt.grid(True)
             # Show the plot
             plt.show()
+            # plt.savefig(file_path + f"intersection{node}" + "car_clearance", bbox_inches='tight', pad_inches=0)
+            # plt.close()
 
         
               
