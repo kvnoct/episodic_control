@@ -17,7 +17,7 @@ args = parser.parse_args()
 
 def main():
     # test env
-    duration = 500
+    duration = 300
     lanes = ['F', 'L', 'R']
     directions = ['N', 'E', 'S', 'W']
     A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
@@ -30,7 +30,7 @@ def main():
                             'Lanes': lanes, 'Directions': directions, 'A': A, 
                             'gamma': 0.95, 'alpha': 0.1, 'espilon': 0.1, 'is_mem_based':False,  
                             'is_dynamic_action_duration': False, 'dynamic_action_duration': 4, 
-                            'reward_function': utils.calculate_reward_default, 'n_vehicle_leaving_per_lane': 1}
+                            'reward_function': utils.calculate_reward_diffusion, 'n_vehicle_leaving_per_lane': 1}
     graph_structure_params = {'rows': args.row, 'cols': args.col, 'length': 60}
     communcation_parameters = {'A': A, 'mu': 0.0, 'sigma': 1.0, 'tau': 0.0}
 
