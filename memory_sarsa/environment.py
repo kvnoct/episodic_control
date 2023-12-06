@@ -157,6 +157,7 @@ class Intersection:
         self.states = [X_state() for _ in range(self.duration)]
         self.vehicles: Dict[Tuple[str, str], List[Any]] = {}
         self.current_action = self.get_next_action(next_state=self.get_current_state(), first=True)
+        self.departing_metrics = []
         for direction in self.Directions:
             for lane in self.Lanes:
                 self.vehicles[(direction, lane)] = []
@@ -180,9 +181,9 @@ class Intersection:
         action_string = self.format_action(action)
         action_next_string = self.format_action(action_next)
 
-        if self.i==0:
-            self.q_table_check_if_state_exist(state)
-        self.q_table_check_if_state_exist(state_next)
+        
+        state = self.q_table_check_if_state_exist(state)
+        state_next = self.q_table_check_if_state_exist(state_next)
 
         q_value_predict = self.q_table.loc[state, action_string]
         if not done:
@@ -210,11 +211,41 @@ class Intersection:
         self.states[self.i] = state
 
     def q_table_check_if_state_exist(self, state):
-        if state not in self.q_table.index:
+        nearby_state, in_q_table = self._check_in_q_table(state)
+        if not in_q_table:
             new_row = pd.Series([0] * len(self.actions), 
                                 index=self.q_table.columns, 
                                 name=state)
             self.q_table = pd.concat([self.q_table, new_row.to_frame().T])
+            nearby_state = state
+        return nearby_state
+    
+    def _check_in_q_table(self, state):
+        tolerance = 1
+        in_memory = False
+        if(self.q_table.shape[0]==0):
+            return None, in_memory
+        if state in self.q_table.index:
+            in_memory = True
+            return state, in_memory     
+        else:
+            # the state is not q_table, find a nearby state and use it 
+            
+            data = np.vstack(self.q_table.index.map(X_state.to_numpy).values)
+            kd = KDTree(data)
+            indexes = kd.query_ball_point(state.to_numpy(), r=tolerance)
+            in_memory = True
+
+            # didnt find a nearyb state
+            if(len(indexes)==0):
+                in_memory = False
+                return None, in_memory
+            nearby_points = data[indexes]
+            nearby_states = [X_state.numpy_to_x_state(nearby_point) for nearby_point in nearby_points]
+            
+            nearby_state, action = self.q_table.loc[nearby_states].stack().idxmax()
+            return nearby_state, in_memory
+            
 
     def move_vehicle(self, next_state, current_action, i, test=False):
         total_depart = 0 
@@ -537,7 +568,7 @@ class Intersection:
             ax.plot(range(self.mem.size_time.shape[0]), self.mem.size_time)
             ax.set_xlabel('Time (t)')
             ax.set_ylabel('Memory Size')
-            ax.set_title(f"Memory size for {self.name}")
+            ax.set_title(f"Memory size for {self.name} (max = {self.mem.size_time[-1]})")
             # plt.show()
 
              # Save the plot in a directory
@@ -998,6 +1029,7 @@ class Env:
         intersection.update_q_table(reward=reward, state_next=next_state, action_next=next_action, done=done)
         if not done:
             intersection.apply_state(state=next_state, action=next_action)
+        intersection.update_q_table_size_time_array(i=intersection.i)
         return done
     
     def step_onestep_test(self, intersection: Intersection)->bool:
@@ -1025,6 +1057,16 @@ class Env:
                 to_graph.nodes[node].intersection.q_table = copy.deepcopy(from_graph.nodes[node].intersection.q_table)
                 to_graph.nodes[node].intersection.reset()
         return to_graph
+    
+    def test_reset_size_time_array(self):
+        for node in self.graph.nodes:
+            if not node.startswith('in'):
+                intersection: Intersection = self.graph.nodes[node].intersection
+                if not intersection.is_mem_based:
+                    intersection.update_q_table_size_time_array(i=0)
+                else:
+                    intersection.mem.update_size_time_array(i=0)  
+
 
     def test(self, test_graph, test_vehicles, update_epoch):
         # TODO calculate average metrics and run it for multiple tests
@@ -1034,7 +1076,9 @@ class Env:
 
         self.graph = graph
         self.vehicles = vehicles
-
+        self.departing_metrics_result = {}
+        self.arriving_vehicles = []
+        self.test_reset_size_time_array()
         n_iter = 1
         done_dict = self.done_dict_initialise()
         while not all(done_dict.values()):
