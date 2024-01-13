@@ -41,7 +41,7 @@ class Communication:
     def update_local_memory(self, memory: pd.DataFrame, update_type: str) -> pd.DataFrame:
         noise = np.random.normal(loc = self.mu, scale = self.sigma)
 
-        #Assuming the memory index method will not be used, we will create new X_state objects to the updated local memory which erases the previous X_state objects
+        #Assuming the memory index  will not be used, we will create new X_state objects to the updated local memory which erases the previous X_state objects
         if update_type == 'all':
             memory = self.central_q_table + self.tau * noise
         elif update_type == 'partial':
@@ -55,7 +55,6 @@ class Communication:
             tmp = pd.merge(left= self.central_q_table, right = memory, on = 'state_idx', how = 'inner', suffixes = ['', '_old'])
             tmp = tmp.loc[:, ~tmp.columns.str.endswith('_old')]
             memory = tmp
-
 
             self.central_q_table = self.central_q_table.drop(columns = ['state_idx'])
             memory.index = memory['state_idx'].apply(lambda x: np.array(x.split('-')).astype(int)).apply(lambda x: environment.X_state.numpy_to_x_state(x))

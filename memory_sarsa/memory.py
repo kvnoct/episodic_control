@@ -134,6 +134,105 @@ class Memory():
 
         return nearby_state, action, in_memory
 
+    def check_if_equiv_state_exist(self, memory_type, state, tolerence=1):
+        if(memory_type=='long'):
+            memory = self.memory_table  
+        elif(memory_type=='short'):
+            memory = self.short_term_Q
+
+        if(memory.shape[0]==0):
+            in_memory = False
+            return None, None, in_memory
+        
+        all_equiv_states = self.get_equiv_states(state)
+        matching_indices = self.memory_table.index.isin(list(all_equiv_states.keys()))
+        # Get the states that match
+        matching_states_list = self.memory_table.index[matching_indices].tolist()
+        if len(matching_states_list) == 0:
+            in_memory = False
+            return None, None, in_memory
+        in_memory = True
+        if memory_type =='long':
+            nearby_table =  self.memory_table.loc[matching_states_list]
+            nearby_state = nearby_table.index[nearby_table['R'].to_numpy().argmax()]
+            action = nearby_table.loc[nearby_state]['a']
+        else:
+            nearby_state,action = self.short_term_Q.loc[matching_states_list].stack().idxmax()
+            action = self.parse_formatted_action(action)
+        
+        return nearby_state, action, in_memory
+
+
+
+    def get_equiv_states(self, state: environment.X_state):
+        state_arrays = self.generate_translated_arrays(state.to_numpy())
+        all_equiv_classes = self.generate_shifted_arrays(state_arrays)
+        return all_equiv_classes 
+
+    def generate_shifted_arrays(input_list, shift_amount=2):
+        # Initialize an empty dictionary to store shifted arrays and rotation amounts
+        result_dict = {}
+
+        # Iterate over each array in the input list
+        for input_array in input_list:
+            # Iterate over the shift positions for each array
+            for i in range(0, len(input_array), shift_amount):
+                # Create a copy of the input array
+                shifted_array = np.roll(input_array, i)
+
+                # Convert the shifted array to a tuple to make it hashable
+                shifted_tuple = tuple(shifted_array)
+
+                # Add the shifted array and rotation amount to the dictionary
+                result_dict[environment.X_state.numpy_to_x_state(shifted_array)] = i
+
+        return result_dict 
+
+
+    def generate_shifted_arrays(input_list):
+        # Initialize an empty set to store unique arrays
+        unique_arrays = set()
+
+        # Initialize an empty list to store the result arrays
+        result_list = []
+
+        # Iterate over each array in the input list
+        for input_array in input_list:
+            # Iterate over the shift positions for each array
+            for i in range(0, len(input_array), 2):
+                # Create a copy of the input array
+                shifted_array = np.roll(input_array, i)
+
+                # Convert the shifted array to a tuple to make it hashable
+                shifted_tuple = tuple(shifted_array)
+
+                # Append the shifted array to the result list if it's unique
+                if shifted_tuple not in unique_arrays:
+                    unique_arrays.add(shifted_tuple)
+                    result_list.append()
+        return result_list
+
+
+    def generate_translated_arrays(input_array):
+        # Initialize an empty list to store the result arrays
+        result_list = []
+        result_list.append(input_array)
+
+        # Iterate over the indices of the input array
+        for i in range(len(input_array)):
+            # Create a copy of the input array
+            new_array = np.copy(input_array)
+
+            # Increase the value at the current index by 1
+            new_array[i] += 1
+
+            # Append the new array to the result list
+            result_list.append(new_array)
+
+        return result_list
+
+
+
     def plot_memory_tables(self, directory_path, name):
         # plot short term memory as heat map and display long term memory as a table
         fig, ax = plt.subplots(1,2, figsize=(20,10))

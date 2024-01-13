@@ -988,6 +988,7 @@ class Env:
         return graph_structure
     
     def update_memories(self) -> None:
+        # Update central memory
         memories = []
         for node in self.graph.nodes:
             if not node.startswith('in'):
