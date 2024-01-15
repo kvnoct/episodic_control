@@ -137,7 +137,7 @@ class Intersection:
         self.q_table_size_time[0] = self.q_table.shape[0]
         self.is_mem_based = is_mem_based
         if is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=gamma, alpha=alpha, duration=duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=gamma, alpha=alpha, duration=duration, Actions=self.actions, Directions=self.Directions)
 
         self.current_action = self.get_next_action(next_state=self.get_current_state(), first=True)
 
@@ -147,7 +147,7 @@ class Intersection:
     def set_memory_based(self, is_mem_based):
         self.is_mem_based = is_mem_based
         if is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration, Actions=self.actions, Directions=self.Directions)
         else:
             self.mem = None
 
@@ -162,7 +162,7 @@ class Intersection:
             for lane in self.Lanes:
                 self.vehicles[(direction, lane)] = []
         if self.is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration, Actions=self.actions, Directions=self.Directions)
 
     def get_empty_q_table(self):
         q_table = pd.DataFrame(columns=self.action_strings, dtype=np.float64)
