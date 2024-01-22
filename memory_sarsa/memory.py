@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 
 
 class Memory():
-    def __init__(self, q_table, gamma, alpha, duration, Actions, Directions) -> None:
+    def __init__(self, q_table, gamma, alpha, duration, Actions, Directions, short_term_memory_size=10) -> None:
          # columns: "distance metric-sum of elemnts ^2, optimal action, optimal R_a"
          self.columns =['d', 'a', 'R']
-         self.short_term_memory_size = 5
+         self.short_term_memory_size = short_term_memory_size
          self.gamma = gamma
          self.alpha = alpha
          self.duration=duration
@@ -25,12 +25,24 @@ class Memory():
     def update_size_time_array(self,i):
         self.size_time[i] = self.memory_table.shape[0]
 
+    # adding to long_term_memory
     def append_using_q_table(self, q_table):
         for s in q_table.index:
             d = s.self_sum()
             a = q_table.columns[np.nanargmax(q_table.loc[s])]
             r = q_table.loc[s,a]
             self._insert(s,d,self.parse_formatted_action(a),r)
+    
+    # mainly used in communication module, the size isnt used
+    def append_q_table_to_memory_q_table(self, q_table):
+        for state in q_table.index:
+            nearest_state, _, _, in_memory, shift_amount = self.read_memory_table(memory_type='short', state=state)
+            if in_memory:
+                shifted_row = np.roll(q_table.loc[state,:].to_numpy(), 3*shift_amount)
+                new_row = (shifted_row + self.short_term_Q.loc[nearest_state,:].to_numpy())/2
+                self.short_term_Q.loc[nearest_state,:] = new_row
+            else:
+                self.short_term_Q = pd.concat([self.short_term_Q, q_table.loc[state,:].to_frame().T])
 
     def _insert(self, state, d, a, r):
         # inserting to long term memory
@@ -170,13 +182,13 @@ class Memory():
             shift_amount = all_equiv_states[nearby_state]
             action = nearby_table.loc[nearby_state]['a']
             reward = nearby_table.loc[nearby_state]['R']
-            action = self.get_shifted_action(action, shift_amount)
+            action = self.get_shifted_action(action, -shift_amount)
         else:
             nearby_state,action = self.short_term_Q.loc[matching_states_list].stack().idxmax()
             shift_amount = all_equiv_states[nearby_state]
             reward = self.short_term_Q.loc[nearby_state, action]
             action = self.parse_formatted_action(action)
-            action = self.get_shifted_action(action, shift_amount)
+            action = self.get_shifted_action(action, -shift_amount)
         
         return nearby_state, action, reward, in_memory, shift_amount
 
@@ -314,7 +326,15 @@ class Memory():
         plt.savefig(file_path, bbox_inches='tight', pad_inches=0)
         plt.close(fig)
         return file_path
-        
+    
+    def convert_long_term_memory_to_q_table(self):
+        q_table = pd.DataFrame(0, index=self.memory_table.index, columns=self.short_term_Q.columns, dtype=np.float64)
+        for state in self.memory_table.index:
+            action = self.memory_table.loc[state]['a']
+            action = self.format_action(action)
+            reward = self.memory_table.loc[state]['R']
+            q_table.loc[state, action] = reward
+        return q_table
 
 
 
