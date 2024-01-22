@@ -987,21 +987,22 @@ class Env:
         
         return graph_structure
     
-    def update_memories(self) -> None:
+    def update_memories(self, update_epoch) -> None:
         # Update central memory
         memories = []
         for node in self.graph.nodes:
-            if not node.startswith('in'):
+            if not node.startswith('in') and self.graph.nodes[node].intersection.i% update_epoch == 0 \
+               and self.comm_based == True and self.graph.nodes[node].intersection.is_mem_based == True:
                 table=self.graph.nodes[node].intersection.mem.short_term_Q
                 memories.append(table)
-
-        self.comm.update_central_memory(memories)
-        
-        #Update local memories
-        for node in self.graph.nodes:
-            if not node.startswith('in'):
-                self.graph.nodes[node].intersection.mem.short_term_Q = self.comm.update_local_memory(self.graph.nodes[node].intersection.mem.short_term_Q, update_type = self.update_type)
-                
+        if len(memories) > 0:
+            self.comm.update_central_memory(memories)
+            
+            #Update local memories
+            for node in self.graph.nodes:
+                if not node.startswith('in'):
+                    self.graph.nodes[node].intersection.mem.short_term_Q = self.comm.update_local_memory(self.graph.nodes[node].intersection.mem.short_term_Q, update_type = self.update_type)
+                    
 
     def SARSA_run(self, n_episodes):
         for _ in range(n_episodes):
@@ -1092,11 +1093,12 @@ class Env:
                         #if done, gather all departing vehicles count
                         self.departing_metrics_result[node] = self.graph.nodes[node].intersection.departing_metrics
                 
-                if n_iter % update_epoch == 0 and self.comm_based == True and self.graph.nodes[node].intersection.is_mem_based == True:
-                    #time to update memory tables
-                    self.update_memories()
+                # if n_iter % update_epoch == 0 and self.comm_based == True and self.graph.nodes[node].intersection.is_mem_based == True:
+                #     #time to update memory tables
+                #     self.update_memories()
                             
-                n_iter += 1
+                # n_iter += 1
+            self.update_memories(update_epoch=update_epoch)
             self.arriving_vehicles.append(self.compute_arriving_vehicles())
 
     def plot_env(self):

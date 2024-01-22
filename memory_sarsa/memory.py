@@ -170,13 +170,13 @@ class Memory():
             shift_amount = all_equiv_states[nearby_state]
             action = nearby_table.loc[nearby_state]['a']
             reward = nearby_table.loc[nearby_state]['R']
-            action = self.get_shifted_action(action, shift_amount)
+            action = self.get_shifted_action(action, -shift_amount)
         else:
             nearby_state,action = self.short_term_Q.loc[matching_states_list].stack().idxmax()
             shift_amount = all_equiv_states[nearby_state]
             reward = self.short_term_Q.loc[nearby_state, action]
             action = self.parse_formatted_action(action)
-            action = self.get_shifted_action(action, shift_amount)
+            action = self.get_shifted_action(action, -shift_amount)
         
         return nearby_state, action, reward, in_memory, shift_amount
 
