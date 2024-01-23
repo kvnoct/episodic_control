@@ -39,7 +39,7 @@ class Memory():
             nearest_state, _, _, in_memory, shift_amount = self.read_memory_table(memory_type='short', state=state)
             if in_memory:
                 shifted_row = np.roll(q_table.loc[state,:].to_numpy(), 3*shift_amount)
-                new_row = (shifted_row + self.short_term_Q.loc[nearest_state,:].to_numpy())/2
+                new_row = np.maximum(shifted_row, self.short_term_Q.loc[nearest_state,:].to_numpy())
                 self.short_term_Q.loc[nearest_state,:] = new_row
             else:
                 self.short_term_Q = pd.concat([self.short_term_Q, q_table.loc[state,:].to_frame().T])

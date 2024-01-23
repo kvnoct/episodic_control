@@ -16,10 +16,28 @@ parser.add_argument('--mem', default=False, action = "store_true")
 args = parser.parse_args()
 
 def main():
+    # # test env
+    # duration = 300
+    # lanes = ['F', 'L', 'R']
+    # directions = ['N', 'E', 'S', 'W']
+    # A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
+    #     (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
+    #     (['E'], ['F', 'L']), (['W'], ['F', 'L']), 
+    #     (['N'], ['F', 'L']), (['S'], ['F', 'L'])]
+    # vehicle_parameters = {'duration': duration, 'min_speed': 2.22, 'max_speed': 13.33, 
+    #                     'lanes': lanes, 'arrival_rates': {'E': 5/60, 'N': 5/60, 'W': 10/60, 'S': 7/60}}
+    # intersection_parameters = {'duration': duration, 'action_duration': 10, 
+    #                         'Lanes': lanes, 'Directions': directions, 'A': A, 
+    #                         'gamma': 0.95, 'alpha': 0.1, 'espilon': 0.1, 'is_mem_based':False,  
+    #                         'is_dynamic_action_duration': False, 'dynamic_action_duration': 4, 
+    #                         'reward_function': utils.calculate_reward_diffusion, 'n_vehicle_leaving_per_lane': 1}
+    # graph_structure_params = {'rows': args.row, 'cols': args.col, 'length': 60}
+    # communcation_parameters = {'A': A, 'mu': 0.0, 'sigma': 1.0, 'tau': 0.0}
+
     # test env
     duration = 300
     lanes = ['F', 'L', 'R']
-    directions = ['N', 'E', 'S', 'W']
+    directions = ['E', 'N', 'W', 'S']
     A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
         (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
         (['E'], ['F', 'L']), (['W'], ['F', 'L']), 
@@ -28,11 +46,12 @@ def main():
                         'lanes': lanes, 'arrival_rates': {'E': 5/60, 'N': 5/60, 'W': 10/60, 'S': 7/60}}
     intersection_parameters = {'duration': duration, 'action_duration': 10, 
                             'Lanes': lanes, 'Directions': directions, 'A': A, 
-                            'gamma': 0.95, 'alpha': 0.1, 'espilon': 0.1, 'is_mem_based':False,  
-                            'is_dynamic_action_duration': False, 'dynamic_action_duration': 4, 
-                            'reward_function': utils.calculate_reward_diffusion, 'n_vehicle_leaving_per_lane': 1}
-    graph_structure_params = {'rows': args.row, 'cols': args.col, 'length': 60}
-    communcation_parameters = {'A': A, 'mu': 0.0, 'sigma': 1.0, 'tau': 0.0}
+                            'gamma': 0.95, 'alpha': 0.1, 'espilon': 0.1, 'is_mem_based':False, 'short_term_memory_size':5,
+                            'is_dynamic_action_duration': False, 'dynamic_action_duration': 4,  'epsilon_test_not_mem':0.6, 'epsilon_test_mem':0.9,
+                            'reward_function': utils.calculate_reward_default, 'n_vehicle_leaving_per_lane': 1}
+    graph_structure_params = {'rows': 2, 'cols': 2, 'length': 60}
+    communcation_parameters = {'A': A, 'duration': duration, 'mu': 0.0, 'sigma': 1.0, 'tau': 0.0, 'Directions': directions}
+                
 
     folder_path = f'metrics/run_{args.row}_{args.col}'
     if os.path.isdir(folder_path) == False:

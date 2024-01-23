@@ -100,7 +100,7 @@ class X_state:
 class Intersection:
     def __init__(self, name: str, reward_function, duration: int=200, action_duration: int=10, gamma=0.95, alpha=0.1, espilon=0.1,
                  Lanes: List[str] = ['F', 'L', 'R'], is_mem_based: bool = False, short_term_memory_size=10,
-                 is_dynamic_action_duration: bool = False, dynamic_action_duration: int = 4,
+                 is_dynamic_action_duration: bool = False, dynamic_action_duration: int = 4, epsilon_test_not_mem = 0.6, epsilon_test_mem = 0.9,
                  Directions: List[str] = ['E', 'N', 'W', 'S'], 
                  A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
                         (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
@@ -126,6 +126,8 @@ class Intersection:
         self.departing_metrics = []
         self.short_term_memory_size = short_term_memory_size
         self.is_mem_based = is_mem_based
+        self.epsilon_test_mem = epsilon_test_mem
+        self.epsilon_test_not_mem = epsilon_test_not_mem
        
         # list of vehicles for this intersection
         self.vehicles: Dict[Tuple[str, str], List[Any]] = {}
@@ -368,6 +370,8 @@ class Intersection:
         '''
 
         if (self.i % self.action_duration == 0 and self.i>0) or first:
+            if np.random.rand() >= self.epsilon_test_mem:
+                return self.actions[np.random.choice(len(self.actions))]
             in_memory, action = self.mem.get_action_from_memory(next_state)
             
             # not in memory, so the best greedy action would be to turn on the signal 
@@ -388,7 +392,8 @@ class Intersection:
         '''
 
         if (self.i % self.action_duration == 0 and self.i>0) or first:
-        
+            if np.random.rand() >= self.epsilon_test_not_mem:
+                return self.actions[np.random.choice(len(self.actions))]
             if next_state in self.q_table.index:
                 action = self.q_table.loc[next_state].idxmax()
                 action =  self.parse_formatted_action(action)
