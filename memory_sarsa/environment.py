@@ -99,8 +99,8 @@ class X_state:
 
 class Intersection:
     def __init__(self, name: str, reward_function, duration: int=200, action_duration: int=10, gamma=0.95, alpha=0.1, espilon=0.1,
-                 Lanes: List[str] = ['F', 'L', 'R'], is_mem_based: bool = False, 
-                 is_dynamic_action_duration: bool = False, dynamic_action_duration: int = 4,
+                 Lanes: List[str] = ['F', 'L', 'R'], is_mem_based: bool = False, short_term_memory_size=10,
+                 is_dynamic_action_duration: bool = False, dynamic_action_duration: int = 4, epsilon_test_not_mem = 0.6, epsilon_test_mem = 0.9,
                  Directions: List[str] = ['E', 'N', 'W', 'S'], 
                  A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
                         (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
@@ -124,6 +124,10 @@ class Intersection:
         self.n_vehicle_leaving_per_lane = n_vehicle_leaving_per_lane
         self.calculate_reward = reward_function
         self.departing_metrics = []
+        self.short_term_memory_size = short_term_memory_size
+        self.is_mem_based = is_mem_based
+        self.epsilon_test_mem = epsilon_test_mem
+        self.epsilon_test_not_mem = epsilon_test_not_mem
        
         # list of vehicles for this intersection
         self.vehicles: Dict[Tuple[str, str], List[Any]] = {}
@@ -137,7 +141,9 @@ class Intersection:
         self.q_table_size_time[0] = self.q_table.shape[0]
         self.is_mem_based = is_mem_based
         if is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=gamma, alpha=alpha, duration=duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=gamma, alpha=alpha, 
+                                     duration=duration, Actions=self.actions, Directions=self.Directions, 
+                                     short_term_memory_size=self.short_term_memory_size)
 
         self.current_action = self.get_next_action(next_state=self.get_current_state(), first=True)
 
@@ -147,7 +153,9 @@ class Intersection:
     def set_memory_based(self, is_mem_based):
         self.is_mem_based = is_mem_based
         if is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, 
+                                     duration=self.duration, Actions=self.actions, 
+                                     Directions=self.Directions, short_term_memory_size=self.short_term_memory_size)
         else:
             self.mem = None
 
@@ -162,7 +170,9 @@ class Intersection:
             for lane in self.Lanes:
                 self.vehicles[(direction, lane)] = []
         if self.is_mem_based:
-            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, duration=self.duration)
+            self.mem = memory.Memory(q_table=self.q_table, gamma=self.gamma, alpha=self.alpha, 
+                                     duration=self.duration, Actions=self.actions, 
+                                     Directions=self.Directions, short_term_memory_size=self.short_term_memory_size)
 
     def get_empty_q_table(self):
         q_table = pd.DataFrame(columns=self.action_strings, dtype=np.float64)
@@ -270,6 +280,7 @@ class Intersection:
     def step(self, test = False, debug=False):
         next_state = X_state()
         i = self.i
+        # print(f"intersection {self.name} step {i}")
         action = self.current_action
         ## carry over the previous number of cars at the junction
         current_state = self.get_current_state()
@@ -359,6 +370,8 @@ class Intersection:
         '''
 
         if (self.i % self.action_duration == 0 and self.i>0) or first:
+            if np.random.rand() >= self.epsilon_test_mem:
+                return self.actions[np.random.choice(len(self.actions))]
             in_memory, action = self.mem.get_action_from_memory(next_state)
             
             # not in memory, so the best greedy action would be to turn on the signal 
@@ -379,7 +392,8 @@ class Intersection:
         '''
 
         if (self.i % self.action_duration == 0 and self.i>0) or first:
-        
+            if np.random.rand() >= self.epsilon_test_not_mem:
+                return self.actions[np.random.choice(len(self.actions))]
             if next_state in self.q_table.index:
                 action = self.q_table.loc[next_state].idxmax()
                 action =  self.parse_formatted_action(action)
@@ -918,9 +932,9 @@ class Vehicles:
 class Env:
     
     def __init__(self, comm_based, update_type, duration, graph_structure_parameters, vehicle_parameters,
-                 intersection_parameters: Dict, communication_parameters: Dict) -> None:
-        self.directions = ['N', 'E', 'S', 'W']
-        self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
+                 intersection_parameters: Dict, communication_parameters: Dict, directions=['E', 'N', 'W', 'S'], opposite_d={'E':'W', 'N': 'S', 'W':'E', 'S':'N'}) -> None:
+        self.directions = directions
+        self.opposite_d = opposite_d
 
         # generate graph
         self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
@@ -987,20 +1001,21 @@ class Env:
         
         return graph_structure
     
-    def update_memories(self) -> None:
+    def update_memories(self, update_epoch) -> None:
+        # Update central memory
         memories = []
         for node in self.graph.nodes:
-            if not node.startswith('in'):
-                table=self.graph.nodes[node].intersection.mem.short_term_Q
+            if not node.startswith('in') and self.graph.nodes[node].intersection.i%update_epoch==0 \
+               and self.comm_based == True and self.graph.nodes[node].intersection.is_mem_based == True:
+                table=self.graph.nodes[node].intersection.mem.convert_long_term_memory_to_q_table()
                 memories.append(table)
-
-        self.comm.update_central_memory(memories)
-        
-        #Update local memories
-        for node in self.graph.nodes:
-            if not node.startswith('in'):
-                self.graph.nodes[node].intersection.mem.short_term_Q = self.comm.update_local_memory(self.graph.nodes[node].intersection.mem.short_term_Q, update_type = self.update_type)
-                
+        if len(memories) > 0:
+            self.comm.update_central_memory(memories)
+            #Update local memories
+            for node in self.graph.nodes:
+                if not node.startswith('in'):
+                    self.graph.nodes[node].intersection.mem = self.comm.update_local_memory(mem_module=self.graph.nodes[node].intersection.mem, update_type = self.update_type)
+                    
 
     def SARSA_run(self, n_episodes):
         for _ in range(n_episodes):
@@ -1079,7 +1094,6 @@ class Env:
         self.departing_metrics_result = {}
         self.arriving_vehicles = []
         self.test_reset_size_time_array()
-        n_iter = 1
         done_dict = self.done_dict_initialise()
         while not all(done_dict.values()):
             for node in self.graph.nodes:
@@ -1091,11 +1105,8 @@ class Env:
                         #if done, gather all departing vehicles count
                         self.departing_metrics_result[node] = self.graph.nodes[node].intersection.departing_metrics
                 
-                if n_iter % update_epoch == 0 and self.comm_based == True and self.graph.nodes[node].intersection.is_mem_based == True:
-                    #time to update memory tables
-                    self.update_memories()
-                            
-                n_iter += 1
+           
+            self.update_memories(update_epoch=update_epoch)
             self.arriving_vehicles.append(self.compute_arriving_vehicles())
 
     def plot_env(self):
