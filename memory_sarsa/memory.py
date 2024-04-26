@@ -6,9 +6,10 @@ import matplotlib.pyplot as plt
 
 
 class Memory():
-    def __init__(self, q_table, gamma, alpha, duration, Actions, Directions, short_term_memory_size=10) -> None:
+    def __init__(self, q_table, gamma, alpha, duration, Actions, Directions, short_term_memory_size=10, full_Direction_space=['E', 'N', 'W', 'S']) -> None:
          # columns: "distance metric-sum of elemnts ^2, optimal action, optimal R_a"
          self.columns =['d', 'a', 'R']
+         self.full_Direction_space = full_Direction_space
          self.short_term_memory_size = short_term_memory_size
          self.gamma = gamma
          self.alpha = alpha
@@ -48,7 +49,7 @@ class Memory():
         # inserting to long term memory
         # find the eq state,action pair which has max rew
         best_state, best_action, best_reward, in_memory, shift_amount = self.read_memory_table(memory_type='long', state=state)
-        a = self.get_shifted_action(a, shift_amount)
+        a, valid_shift = self.get_shifted_action(a, shift_amount)
         if not in_memory:
             new_row = pd.Series([d,a,r], 
                                 index=self.columns, 
@@ -79,7 +80,7 @@ class Memory():
 
     def q_table_check_if_state_exist(self, state, action):
         nearby_state, a,r, in_memory, shift_amount = self.read_memory_table(memory_type='short', state=state)
-        action = self.get_shifted_action(action, shift_amount)
+        action, valid_shift = self.get_shifted_action(action, shift_amount)
         # no similar states, so a unique state found!
         if not in_memory:
             new_row = pd.Series([0] * len(self.short_term_Q.columns), 
@@ -169,7 +170,12 @@ class Memory():
         if(memory.shape[0]==0):
             in_memory = False
             return None, None, reward, in_memory, shift_amount
-        all_equiv_states, matching_states_list = self.get_matching_states_list(state, memory)
+        
+        if state in memory.index:
+            all_equiv_states = {state:0}
+            matching_states_list = [state]
+        else:
+            all_equiv_states, matching_states_list = self.get_matching_states_list(state, memory)
 
         if len(matching_states_list) == 0:
             in_memory = False
@@ -178,18 +184,22 @@ class Memory():
         
         if memory_type =='long':
             nearby_table =  self.memory_table.loc[matching_states_list]
+
             nearby_state = nearby_table.index[nearby_table['R'].to_numpy().argmax()]
             shift_amount = all_equiv_states[nearby_state]
             action = nearby_table.loc[nearby_state]['a']
             reward = nearby_table.loc[nearby_state]['R']
-            action = self.get_shifted_action(action, -shift_amount)
+            
+            action, valid_shift = self.get_shifted_action(action, -shift_amount)
         else:
             nearby_state,action = self.short_term_Q.loc[matching_states_list].stack().idxmax()
             shift_amount = all_equiv_states[nearby_state]
             reward = self.short_term_Q.loc[nearby_state, action]
             action = self.parse_formatted_action(action)
-            action = self.get_shifted_action(action, -shift_amount)
+            action, valid_shift = self.get_shifted_action(action, -shift_amount)
         
+        if not valid_shift:
+            in_memory = False
         return nearby_state, action, reward, in_memory, shift_amount
 
     def get_matching_states_list(self, state, memory):
@@ -224,14 +234,12 @@ class Memory():
     def generate_shifted_arrays(self, input_list, shift_amount=3):
         # Initialize an empty dictionary to store shifted arrays and rotation amounts
         result_dict = {}
-
         # Iterate over each array in the input list
         for input_array in input_list:
             # Iterate over the shift positions for each array
             for i in range(0, len(input_array), shift_amount):
                 # Create a copy of the input array
                 shifted_array = np.roll(input_array, i)
-
                 # Add the shifted array and rotation amount to the dictionary
                 result_dict[environment.X_state.numpy_to_x_state(shifted_array)] = i//shift_amount
 
@@ -241,12 +249,16 @@ class Memory():
         d,l = action
         shifted_d = []
         for k in d:
-            j = self.Directions.index(k)
-            shifted_d.append(self.Directions[(j+shift_amount)%len(self.Directions)])
+            j = self.full_Direction_space.index(k)
+            shifted_d.append(self.full_Direction_space[(j+shift_amount)%len(self.full_Direction_space)])
         shifted_a = (shifted_d, l)
+        # its a possible reverted direction so try the other way
         if shifted_a not in self.Actions:
             shifted_a = (shifted_d[::-1], l)
-        return shifted_a
+        # both ways are not possible, return the original action
+        if shifted_a not in self.Actions:
+            return action, False
+        return shifted_a, True
 
     def generate_translated_arrays(self, input_array):
         # Initialize an empty list to store the result arrays
@@ -354,10 +366,10 @@ class Memory():
                 a = l_action
             else:
                 a = s_action
-        elif in_long_term_memory:
+        elif in_long_term_memory and not in_short_term_memory:
             a = l_action
         #not in long term, check if its in short term
-        elif in_short_term_memory:
+        elif in_short_term_memory and not in_long_term_memory:
             a = s_action    
         # not in memory sadlys
         else:

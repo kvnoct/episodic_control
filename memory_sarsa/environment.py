@@ -371,14 +371,13 @@ class Intersection:
 
         if (self.i % self.action_duration == 0 and self.i>0) or first:
             if np.random.rand() >= self.epsilon_test_mem:
+                #print(self.name, self.actions)
                 return self.actions[np.random.choice(len(self.actions))]
             in_memory, action = self.mem.get_action_from_memory(next_state)
-            
             # not in memory, so the best greedy action would be to turn on the signal 
             # for lines which has current maximum traffic
             if not in_memory:
                 action = self.find_actions_for_max_traffic_displacement(next_state)
-                
         else:
             action = self.current_action
 
@@ -752,7 +751,11 @@ class Vehicle:
 
             # get the current speed and distance to next node
             current_speed = self.get_current_speed()
-            distance = self.graph.nodes[current_node].edges[self.node_times.loc[next_node_index, 'arrival_direction']].length
+           # if self.node_times.loc[next_node_index, 'arrival_direction'] not in self.graph.nodes[next_node].edges.keys():
+            #    print(f"Error: {current_node} to {next_node} is not a valid path")
+             #   print(self.graph.nodes[current_node].edges.keys())
+              #  print(self.node_times.loc[next_node_index, 'arrival_direction'])
+            distance = self.graph.nodes[next_node].edges[self.node_times.loc[next_node_index, 'arrival_direction']].length
             travel_time = distance / current_speed
 
             # update the departure time for the current node and arrival time for the next node
@@ -930,18 +933,27 @@ class Vehicles:
 
 
 class Env:
-    
     def __init__(self, comm_based, update_type, duration, graph_structure_parameters, vehicle_parameters,
-                 intersection_parameters: Dict, communication_parameters: Dict, directions=['E', 'N', 'W', 'S'], opposite_d={'E':'W', 'N': 'S', 'W':'E', 'S':'N'}) -> None:
+                 intersection_parameters: Dict, communication_parameters: Dict, 
+                 directions=['E', 'N', 'W', 'S'], opposite_d={'E':'W', 'N': 'S', 'W':'E', 'S':'N'}, lanes=['F', 'L', 'R'],
+                 A = [(['E', 'W'], ['F']), (['E', 'W'], ['L']), 
+                    (['N', 'S'], ['F']), (['N', 'S'], ['L']), 
+                    (['E'], ['F', 'L']), (['W'], ['F', 'L']), 
+                    (['N'], ['F', 'L']), (['S'], ['F', 'L'])]) -> None:
         self.directions = directions
         self.opposite_d = opposite_d
+        self.A = A
+        self.lanes=lanes
 
+        if 'graph_structure' in graph_structure_parameters.keys():
+            self.graph_structure = graph_structure_parameters['graph_structure']
+        else:
+            self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
         # generate graph
-        self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
-        self.graph = Graph(intersection_parameter_dic=intersection_parameters)
-        self.graph.add_from_dict(graph_structure=self.graph_structure)
+        self.action_space_per_node, self.direction_space_per_node = self.generate_action_spaces_from_graph_structure(self.graph_structure)
+        self.graph = Graph(intersection_parameter_dic=intersection_parameters, opposite_d=self.opposite_d)
+        self.graph.add_from_dict(graph_structure=self.graph_structure, action_structure=self.action_space_per_node, direction_structure=self.direction_space_per_node)
         # self.graph.draw_graph_2()
-
         self.vehicles = Vehicles(graph=self.graph, **vehicle_parameters)
         self.vehicle_parameters = vehicle_parameters
         self.intresection_parameters = intersection_parameters
@@ -953,13 +965,46 @@ class Env:
         self.departing_metrics_result = {}
         self.arriving_vehicles = []
     
+    def generate_action_spaces_from_graph_structure(self, graph_structure):
+        def _determine_next_dir(all_directions, directions, lanes):
+            next_directions = set()
+            for direction in directions:
+                dir_index = all_directions.index(direction)
+                for lane in lanes:
+                    if lane == 'F':
+                        next_directions.add(all_directions[(dir_index+2)%len(all_directions)])
+                    elif lane == 'L':
+                        next_directions.add(all_directions[(dir_index-1)%len(all_directions)])
+            return next_directions                  
+        action_space = {}
+        direction_space = {}
+        for node, (_, edges) in graph_structure.items():
+            if not node.startswith('in'):
+                legal_actions = []
+                valid_directions = [d[2] for d in graph_structure.get(node, [])[1]]
+                # to ensure similar order of directions as before
+                valid_directions = [d for d in self.directions if d in valid_directions]
+                for a in self.A:
+                    if all(d in valid_directions for d in a[0]):
+                        if len(_determine_next_dir(self.directions, a[0], a[1]) & set(valid_directions))>0:
+                            legal_actions.append(a)
+                action_space[node] = legal_actions
+                direction_space[node] = valid_directions
+            else:
+                action_space[node] = self.A
+                direction_space[node] = self.directions
+        return action_space, direction_space
+
     def generate_test_structures(self, graph_structure_parameters, vehicle_parameters, intersection_parameters: Dict):
         # generate graph
-        self.test_graph_structure = self.generate_graph_structure(**graph_structure_parameters)
+        if 'graph_structure' in graph_structure_parameters.keys():
+            self.graph_structure = graph_structure_parameters['graph_structure']
+        else:
+            self.graph_structure = self.generate_graph_structure(**graph_structure_parameters)
+        self.action_space_per_node, self.direction_space_per_node = self.generate_action_spaces_from_graph_structure(self.graph_structure)
         self.test_graph = Graph(intersection_parameter_dic=intersection_parameters)
-        self.test_graph.add_from_dict(graph_structure=self.test_graph_structure)
+        self.test_graph.add_from_dict(graph_structure=self.graph_structure, action_structure=self.action_space_per_node, direction_structure=self.direction_space_per_node)
         self.test_graph = self.copy_q_table(from_graph=self.graph, to_graph=self.test_graph)
-
         self.test_vehicles = Vehicles(graph=self.test_graph, **vehicle_parameters)
         return self.test_graph, self.test_vehicles
 
@@ -995,7 +1040,7 @@ class Env:
                         graph_structure[neighbor[0]] = (1, [(node_name, neighbor[1], opposite_d[direction])])
                         fill_k+=1
                     neighbors.append(neighbor)
-                    
+
 
                 graph_structure[node_name] = (len(neighbors), neighbors)
         
@@ -1054,6 +1099,7 @@ class Env:
         if not intersection.is_mem_based:
             intersection.update_q_table(reward=reward, state_next=next_state, action_next=next_action, done=done)
         else:
+            # print(intersection.name, intersection.actions, intersection.mem.Actions, next_action, next_state, reward, done)
             intersection.mem.insert(current_state=intersection.get_current_state(), current_action=intersection.current_action, 
                                     reward=reward, state_next=next_state, action_next=next_action, done=done)
         if not done:

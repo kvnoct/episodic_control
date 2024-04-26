@@ -3,6 +3,8 @@ import environment
 import networkx as nx
 import matplotlib.pyplot as plt
 
+Action = Tuple[List[str], List[str]]
+
 class Edge:
     def __init__(self, length: float, nodes: List['Node']) -> None:
         """Initialize an Edge object.
@@ -63,9 +65,9 @@ class Node:
         return f"Node value: {self.value}\nNeighbors:\n{neighbors_info}"
 
 class Graph:
-    def __init__(self, intersection_parameter_dic: Dict) -> None:
+    def __init__(self, intersection_parameter_dic: Dict, opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}) -> None:
         """Initialize a Graph object."""
-        self.opposite_d = {'N': 'S', 'E':'W', 'S':'N', 'W':'E'}
+        self.opposite_d = opposite_d
         self.nodes: Dict[Any, Node] = {}
         self.input_nodes = []  # List of input nodes
         self.non_input_nodes = []
@@ -82,7 +84,7 @@ class Graph:
         for node in self.nodes.values():
             node.intersection.reset()
     
-    def add_node(self, value: Any) -> None:
+    def add_node(self, value: Any, action_space: List[Action], direction_space: List[str]) -> None:
         """Add a node to the graph.
 
         Args:
@@ -94,7 +96,11 @@ class Graph:
                 self.input_nodes.append(value)
             else:
                 self.non_input_nodes.append(value)
-            self.nodes[value] = Node(value, intersection_parameters_dic=self.intersection_parameter_dic)
+
+            intersection_parameters_dic = self.intersection_parameter_dic.copy()
+            intersection_parameters_dic['A'] = action_space
+            intersection_parameters_dic['Directions'] = direction_space
+            self.nodes[value] = Node(value, intersection_parameters_dic=intersection_parameters_dic)
             
 
     def add_edge(self, from_node: Any, to_node: Any, length: float, dir: str) -> None:
@@ -110,7 +116,9 @@ class Graph:
         self.nodes[from_node].add_neighbor(dir, to_node, edge)
         self.nodes[to_node].add_neighbor(self.opposite_d[dir], from_node, edge)
 
-    def add_from_dict(self, graph_structure: Dict[Any, Tuple[int, List[Tuple[Any, float, str]]]]) -> None:
+    def add_from_dict(self, graph_structure: Dict[Any, Tuple[int, List[Tuple[Any, float, str]]]], 
+                      action_structure: Dict[Any, List[Action]], 
+                      direction_structure: Dict[Any, List[str]]) -> None:
         """Add nodes and edges to the graph based on the provided dictionary.
 
         Args:
@@ -118,9 +126,13 @@ class Graph:
         """
         self.graph_structure = graph_structure
         for node, (length, connections) in graph_structure.items():
-            self.add_node(node)
+            node_action_space = action_structure[node]
+            node_directions = direction_structure[node]
+            self.add_node(node, node_action_space, node_directions)
             for neighbor, neighbor_length, dir in connections:
-                    self.add_node(neighbor)
+                    neighbor_action_space = action_structure[neighbor]
+                    neighbor_directions = direction_structure[neighbor]
+                    self.add_node(neighbor, neighbor_action_space, neighbor_directions)
                     self.add_edge(node, neighbor, neighbor_length, dir)
 
     def draw_graph(self) -> None:
@@ -137,7 +149,12 @@ class Graph:
                     G.add_edge(str(node.value), str(connected_node), length=edge.length)
                     added_edges.add(edge_key)
 
-        pos = nx.spring_layout(G)
+        pos = nx.kamada_kawai_layout(G)
+        # Adjust node positions to create a rectangular grid
+        scale = 1.5  # Adjust this scale to increase or decrease edge length
+        for node, (x, y) in pos.items():
+            pos[node] = (scale * x, scale * y)
+
         labels = {str(node.value): str(node.value) for node in self.nodes.values()}
         edge_labels = {(u, v): str(data['length']) for u, v, data in G.edges(data=True)}
 
@@ -228,7 +245,9 @@ class Graph:
 
         labels = {str(node.value): str(node.value) for node in self.nodes.values()}
         edge_labels = {(u, v): str(data['length']) for u, v, data in G.edges(data=True)}
-
+        
+        
+        plt.figure(figsize=(10, 8))
         nx.draw_networkx(G, pos, with_labels=True, labels=labels, node_size=800, node_color='skyblue', font_weight='bold', arrows=True)
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_color='red')
         plt.title("Graph Visualization - Rectangular Grid Layout")
